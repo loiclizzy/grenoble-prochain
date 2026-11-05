@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Prochain</title>
+<meta name="description" content="Prochains passages tram et bus à Grenoble, en temps réel.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Prochain">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <label class="search">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" type="search" placeholder="Rechercher un arrêt" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
+  </label>
+  <button id="mic" class="icon" aria-label="Recherche vocale" hidden>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+  </button>
+  <button id="loc" class="icon" aria-label="Arrêts à proximité">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
+  </button>
+</header>
+
+<main>
+  <ul id="results" class="results" hidden></ul>
+  <div id="alerts"></div>
+  <div id="stops"></div>
+  <section id="empty" class="empty" hidden>
+    <p class="big">Où prenez-vous le tram ?</p>
+    <p>Cherchez un arrêt puis touchez <span class="star-inline">☆</span> pour le garder ici.</p>
+  </section>
+</main>
+
+<footer id="status" class="status"></footer>
+
+<script src="app.js"></script>
+</body>
+</html>
