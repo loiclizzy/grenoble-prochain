@@ -1,6 +1,6 @@
 // App shell: served from cache, refreshed in the background.
 // Live API calls (other origin) are never intercepted.
-const CACHE = 'prochain-v3';
+const CACHE = 'prochain-v4';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {

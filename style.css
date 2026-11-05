@@ -153,4 +153,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .empty .big { font-size: 22px; font-weight: 600; color: var(--fg); margin-bottom: 6px; }
 .status { text-align: center; color: var(--faint); font-size: 12px; margin-top: 22px; }
 .status .dot { color: var(--live); }
+.credit { text-align: center; color: var(--faint); font-size: 11px; margin: 6px 0 0; }
+.credit a { color: inherit; }
 .status.off .dot { color: #e5484d; }

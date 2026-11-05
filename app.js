@@ -70,11 +70,14 @@ async function cached(key, ttl, load) {
 
 const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
+// colours go into a style attribute: accept nothing but a plain hex value
+const hex = (v, fallback) => '#' + (/^[0-9a-f]{6}$/i.test(v || '') ? v : fallback);
+
 async function loadRoutes() {
   const list = await cached('routes.v1', 86400000, async () =>
     (await getJSON('/routers/default/index/routes')).map((r) => [r.id, r.shortName, r.color, r.textColor, r.type]));
   for (const [id, short, color, text, type] of list) {
-    state.routes.set(id, { short, color: '#' + (color || '888888'), text: '#' + (text || 'FFFFFF'), tram: type === 'TRAM', type });
+    state.routes.set(id, { short, color: hex(color, '888888'), text: hex(text, 'FFFFFF'), tram: type === 'TRAM', type });
   }
 }
 
