@@ -371,8 +371,7 @@ function renderStop(code, kind, meta) {
       const k = code + '|' + r.key;
       const label = r.times[0]?.dest || r.home || r.dest;
       if (!r.times.length) {
-        // keep quiet about idle regional coaches; urban lines show their missing direction
-        if (r.route.startsWith('SEM:')) body += `<div class="row idle">${badge(r.route)}<span class="dir">${esc(label)}</span><span class="t1">—</span><span class="t2"></span></div>`;
+        body += `<div class="row idle">${badge(r.route)}<span class="dir">${esc(label)}</span><span class="t1">—</span><span class="t2"></span></div>`;
         continue;
       }
       body += `<button class="row" data-row="${esc(k)}">${badge(r.route)}<span class="dir">${esc(label)}</span><span class="t1">${fmtMain(r.times[0], now)}</span><span class="t2">${fmtNext(r.times[1], now)}</span></button>`;
