@@ -120,6 +120,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 .more .occ { color: var(--faint); }
 
+.row.idle .dir, .row.idle .t1 { color: var(--faint); }
+.row.idle .t1 { font-size: 17px; font-weight: 500; }
+.row.idle .badge { opacity: .55; }
+
 .msg { padding: 12px 2px; color: var(--muted); border-top: 1px solid var(--line); font-size: 15px; }
 
 /* alerts */

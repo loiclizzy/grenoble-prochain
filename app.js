@@ -22,14 +22,15 @@ const store = {
 // ---------- state ----------
 
 const state = {
-  routes: new Map(),     // 'SEM:A' -> { short, color, text, tram }
+  routes: new Map(),     // 'SEM:A' -> { short, color, text, tram, type }
   clusters: [],          // [{ code, name, city, lat, lon, key }]
   byCode: new Map(),
   favs: store.get('favs', []),
   viewing: null,         // stop opened from search, not (yet) a favourite
   nearby: [],            // [{ code, dist }]
   locOn: store.get('locOn', false),
-  times: new Map(Object.entries(store.get('times', {}))), // code -> { at, rows, err }
+  times: new Map(Object.entries(store.get('times.v2', {}))), // code -> { at, rows, err }
+  dirs: store.get('dirs.v1', {}), // code -> { t, list: [{ route, dir, dest }] }, every direction leaving the stop
   open: new Set(),       // expanded rows
   alerts: [],
   stopRoutes: store.get('stopRoutes', {}), // code -> route ids serving it (for alerts)
@@ -47,6 +48,7 @@ async function getJSON(path, timeout = 12000) {
   try {
     const r = await fetch(API + path, { signal: ctl.signal });
     if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (r.status === 204) return null;
     return await r.json();
   } finally {
     clearTimeout(t);
@@ -72,7 +74,7 @@ async function loadRoutes() {
   const list = await cached('routes.v1', 86400000, async () =>
     (await getJSON('/routers/default/index/routes')).map((r) => [r.id, r.shortName, r.color, r.textColor, r.type]));
   for (const [id, short, color, text, type] of list) {
-    state.routes.set(id, { short, color: '#' + (color || '888888'), text: '#' + (text || 'FFFFFF'), tram: type === 'TRAM' });
+    state.routes.set(id, { short, color: '#' + (color || '888888'), text: '#' + (text || 'FFFFFF'), tram: type === 'TRAM', type });
   }
 }
 
@@ -98,20 +100,62 @@ async function loadStopRoutes(code) {
   } catch { /* retried on next refresh */ }
 }
 
+// Stoptimes only lists directions with an upcoming departure, so a line that is
+// interrupted would silently vanish. Line timetables tell us every direction that
+// actually leaves this stop (a terminus only has one).
+const DIRS_TTL = 3 * 86400000;
+const dirsLoading = new Set();
+
+async function loadDirs(code) {
+  const c = state.dirs[code];
+  if ((c && Date.now() - c.t < DIRS_TTL) || dirsLoading.has(code)) return;
+  dirsLoading.add(code);
+  try {
+    await loadStopRoutes(code);
+    const ids = (state.stopRoutes[code] || []).filter((id) => state.routes.get(id)?.type !== 'SCOL');
+    const stop = state.byCode.get(code);
+    const here = (a) => a.parentStation?.code === code
+      || (stop && norm(a.name || '') === stop.key && norm(a.city || '') === stop.ckey);
+    const list = [];
+    let failed = false;
+    await Promise.all(ids.map(async (id) => {
+      try {
+        // a line that has finished for the day returns nothing: ask about tomorrow noon instead
+        const noon = new Date(); noon.setDate(noon.getDate() + 1); noon.setHours(12, 0, 0, 0);
+        const fiche = await getJSON('/ficheHoraires/json?route=' + encodeURIComponent(id))
+          || await getJSON('/ficheHoraires/json?route=' + encodeURIComponent(id) + '&time=' + noon.getTime()) || {};
+        for (const k of Object.keys(fiche)) {
+          const stops = fiche[k].arrets || [];
+          const i = stops.findIndex(here);
+          if (i >= 0 && i < stops.length - 1) list.push({ route: id, dir: +k + 1, dest: stops[stops.length - 1].name });
+        }
+      } catch { failed = true; }
+    }));
+    if (!failed || list.length) {
+      state.dirs[code] = { t: failed ? Date.now() - DIRS_TTL + 600000 : Date.now(), list }; // retry failures in 10 min
+      store.set('dirs.v1', state.dirs);
+      render();
+    }
+  } finally {
+    dirsLoading.delete(code);
+  }
+}
+
 async function loadTimes(code) {
-  loadStopRoutes(code);
+  loadDirs(code);
   try {
     const data = await getJSON('/routers/default/index/clusters/' + encodeURIComponent(code) + '/stoptimes');
     const rows = new Map();
     for (const p of data) {
       const route = routeOf(p.pattern.id);
-      const key = route.id + '|' + p.pattern.desc;
-      if (!rows.has(key)) rows.set(key, { key, route: route.id, dest: p.pattern.desc, times: [] });
+      const key = route.id + '|' + p.pattern.dir;
+      if (!rows.has(key)) rows.set(key, { key, route: route.id, dir: p.pattern.dir, dest: p.pattern.desc, times: [] });
       for (const t of p.times) {
         rows.get(key).times.push({
           ts: t.serviceDay + t.realtimeDeparture,
           rt: t.realtime,
           occ: t.occupancy || '',
+          dest: p.pattern.desc,
         });
       }
     }
@@ -150,7 +194,7 @@ function persistTimes() {
     const t = state.times.get(code);
     if (t && t.rows) keep[code] = { at: t.at, rows: t.rows };
   }
-  store.set('times', keep);
+  store.set('times.v2', keep);
   store.set('lastOk', state.lastOk);
 }
 
@@ -299,7 +343,7 @@ function sortRows(rows) {
     const ra = state.routes.get(a.route) || {}, rb = state.routes.get(b.route) || {};
     return (rb.tram ? 1 : 0) - (ra.tram ? 1 : 0)
       || String(ra.short || a.route).localeCompare(String(rb.short || b.route), 'fr', { numeric: true })
-      || a.dest.localeCompare(b.dest, 'fr');
+      || (a.dir || 0) - (b.dir || 0);
   });
 }
 
@@ -313,16 +357,28 @@ function renderStop(code, kind, meta) {
   if (!data) {
     body = '<div class="msg">Chargement…</div>';
   } else {
-    const rows = sortRows(data.rows)
-      .map((r) => ({ ...r, times: r.times.filter((t) => t.ts > now - 20) }))
-      .filter((r) => r.times.length);
+    // every direction leaving the stop, with or without an upcoming departure
+    const byKey = new Map(data.rows.map((r) => [r.key, r]));
+    for (const d of state.dirs[code]?.list || []) {
+      const key = d.route + '|' + d.dir;
+      if (!byKey.has(key)) byKey.set(key, { key, route: d.route, dir: d.dir, dest: d.dest, times: [] });
+      else byKey.get(key).home = d.dest;
+    }
+    const rows = sortRows([...byKey.values()])
+      .map((r) => ({ ...r, times: r.times.filter((t) => t.ts > now - 20) }));
     if (!rows.length) body = `<div class="msg">${data.err ? 'Données indisponibles' : 'Aucun passage prévu'}</div>`;
     for (const r of rows) {
       const k = code + '|' + r.key;
-      body += `<button class="row" data-row="${esc(k)}">${badge(r.route)}<span class="dir">${esc(r.dest)}</span><span class="t1">${fmtMain(r.times[0], now)}</span><span class="t2">${fmtNext(r.times[1], now)}</span></button>`;
+      const label = r.times[0]?.dest || r.home || r.dest;
+      if (!r.times.length) {
+        // keep quiet about idle regional coaches; urban lines show their missing direction
+        if (r.route.startsWith('SEM:')) body += `<div class="row idle">${badge(r.route)}<span class="dir">${esc(label)}</span><span class="t1">—</span><span class="t2"></span></div>`;
+        continue;
+      }
+      body += `<button class="row" data-row="${esc(k)}">${badge(r.route)}<span class="dir">${esc(label)}</span><span class="t1">${fmtMain(r.times[0], now)}</span><span class="t2">${fmtNext(r.times[1], now)}</span></button>`;
       if (state.open.has(k)) {
         body += '<div class="more">' + r.times.slice(0, 6).map((t) =>
-          `<span>${hhmm(t.ts)}${t.rt ? '' : '*'}${t.occ ? ` <span class="occ">${esc(t.occ.toLowerCase())}</span>` : ''}</span>`).join('') + '</div>';
+          `<span>${hhmm(t.ts)}${t.rt ? '' : '*'}${t.dest !== label ? ` → ${esc(t.dest)}` : ''}${t.occ ? ` <span class="occ">${esc(t.occ.toLowerCase())}</span>` : ''}</span>`).join('') + '</div>';
       }
     }
   }
